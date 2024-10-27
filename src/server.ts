@@ -179,9 +179,10 @@ server.after(() => {
 
       for (const nodeId in prompt) {
         const node = prompt[nodeId];
-        if (node.class_type === "SaveImage") {
+        if (node.class_type === "SaveImage" || node.class_type === "SaveImageExtended") {
           node.inputs.filename_prefix = id;
-        } else if (node.inputs.batch_size) {
+        }
+         else if (node.inputs.batch_size) {
           batchSize = node.inputs.batch_size;
         } else if (node.class_type === "LoadImage") {
           const imageInput = node.inputs.image;
