@@ -23,8 +23,8 @@ export type PromptRequest = z.infer<typeof PromptRequestSchema>;
 
 export const PromptResponseSchema = z.object({
   id: z.string(),
-  prompt: z.record(ComfyNodeSchema),
-  images: z.array(z.string().base64()).optional(),
+  // prompt: z.record(ComfyNodeSchema),
+  images: z.array(z.any()).optional(), // avoid using z.string().base64(), if base64 image is too big, cause stack overflow
   webhook: z.string().optional(),
   status: z.enum(["ok"]).optional(),
 });
@@ -71,9 +71,9 @@ export type WorkflowRequest = z.infer<typeof WorkflowRequestSchema>;
 
 export const WorkflowResponseSchema = z.object({
   id: z.string(),
-  input: z.record(z.any()),
-  prompt: z.record(ComfyNodeSchema),
-  images: z.array(z.string().base64()).optional(),
+  // input: z.record(z.any()),
+  // prompt: z.record(ComfyNodeSchema),
+  images: z.array(z.any()).optional(),
   webhook: z.string().optional(),
   status: z.enum(["ok"]).optional(),
 });

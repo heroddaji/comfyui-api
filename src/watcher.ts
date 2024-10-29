@@ -7,6 +7,9 @@ function waitForFileStability(filePath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     let lastKnownSize = -1;
     let retries = 0;
+    let attempts = 0;
+    let maxDelayMs = 50 * 20 * 30; // max Delay is 30 seconds
+    let delayMs = 50;
 
     const checkFile = () => {
       fs.stat(filePath, (err, stats) => {
@@ -15,18 +18,25 @@ function waitForFileStability(filePath: string): Promise<void> {
           return;
         }
 
-        if (stats.size === lastKnownSize) {
+        if (stats.size > 0 && stats.size === lastKnownSize) {
           if (retries >= 3) {
             // Consider the file stable after 3 checks
             resolve();
           } else {
             retries++;
-            setTimeout(checkFile, 50); // Shortened interval due to smaller file size
+            setTimeout(checkFile, delayMs); // Shortened interval due to smaller file size
           }
         } else {
           lastKnownSize = stats.size;
           retries = 0;
-          setTimeout(checkFile, 50);
+          attempts++;
+          
+          // Skip if we've hit this branch too many times
+          if (attempts * delayMs >= maxDelayMs) {
+            resolve();
+            return;
+          }
+          setTimeout(checkFile, delayMs);
         }
       });
     };

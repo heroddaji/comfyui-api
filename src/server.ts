@@ -249,38 +249,36 @@ server.after(() => {
         // Wait for the file and return it
         const images: string[] = [];
         function waitForImagesToGenerate(): Promise<void> {
-          return new Promise((resolve) => {
+          return new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              outputWatcher.removePrefixAction(id);
+              reject(new Error('Image generation timeout'));
+            }, 300000); // 5 minute timeout
+
             outputWatcher.addPrefixAction(
               id,
               batchSize,
               async (filepath: string) => {
-                server.log.info(`dai dai generated file: ${filepath}`);
-                server.log.info(`Reading file: ${filepath}`);
                 try {
-                  let base64File = '';
-                  for (let attempt = 0; attempt < 20; attempt++) {
-                    base64File = await fsPromises.readFile(filepath, {
-                      encoding: "base64",
-                    });
-                    if (base64File) break;
-                    server.log.error(`File read returned empty string: ${filepath}, attempt ${attempt + 1}/20`);
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                  }
-                  if (!base64File) {
-                    server.log.error(`All file read attempts failed for: ${filepath}`);
-                  }
-                  server.log.info(`File read, length: ${base64File.length}`);
+                  server.log.info(`dai dai generated file: ${filepath}`);
+                  const base64File = await fsPromises.readFile(filepath, {
+                    encoding: "base64",
+                  });
+                  server.log.info(`dai dai file size: ${base64File.length}`);
                   images.push(base64File);
-                } catch (error) {
-                  server.log.error(`Error reading file ${filepath}: ${error}`);
-                }
 
-                // Remove the file after reading
-                fsPromises.unlink(filepath);
+                  // Remove the file after reading
+                  fsPromises.unlink(filepath);
 
-                if (images.length === batchSize) {
+                  if (images.length === batchSize) {
+                    clearTimeout(timeout);
+                    outputWatcher.removePrefixAction(id);
+                    resolve();
+                  }
+                } catch (err) {
+                  clearTimeout(timeout);
                   outputWatcher.removePrefixAction(id);
-                  resolve();
+                  reject(err);
                 }
               }
             );
@@ -300,7 +298,9 @@ server.after(() => {
           return reply.code(resp.status).send({ error: await resp.text() });
         }
         await finished;
-        return reply.send({ id, prompt, images });
+
+        const respJson = { id, images }; // we do not need prompt, it take lot of space if the input and prompt has image data as base64 in it
+        return reply.send(respJson);
       }
     }
   );
