@@ -254,10 +254,26 @@ server.after(() => {
               id,
               batchSize,
               async (filepath: string) => {
-                const base64File = await fsPromises.readFile(filepath, {
-                  encoding: "base64",
-                });
-                images.push(base64File);
+                server.log.info(`dai dai generated file: ${filepath}`);
+                server.log.info(`Reading file: ${filepath}`);
+                try {
+                  let base64File = '';
+                  for (let attempt = 0; attempt < 20; attempt++) {
+                    base64File = await fsPromises.readFile(filepath, {
+                      encoding: "base64",
+                    });
+                    if (base64File) break;
+                    server.log.error(`File read returned empty string: ${filepath}, attempt ${attempt + 1}/20`);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                  }
+                  if (!base64File) {
+                    server.log.error(`All file read attempts failed for: ${filepath}`);
+                  }
+                  server.log.info(`File read, length: ${base64File.length}`);
+                  images.push(base64File);
+                } catch (error) {
+                  server.log.error(`Error reading file ${filepath}: ${error}`);
+                }
 
                 // Remove the file after reading
                 fsPromises.unlink(filepath);
@@ -284,7 +300,6 @@ server.after(() => {
           return reply.code(resp.status).send({ error: await resp.text() });
         }
         await finished;
-
         return reply.send({ id, prompt, images });
       }
     }
@@ -352,8 +367,9 @@ server.after(() => {
               return reply.code(resp.status).send(body);
             }
 
-            body.input = input;
-            body.prompt = prompt;
+            // we do not need these info, it take lot of space if the input and prompt has image data as base64 in it
+            // body.input = input;
+            // body.prompt = prompt;
 
             return reply.code(resp.status).send(body);
           }

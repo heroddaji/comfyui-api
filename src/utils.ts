@@ -119,7 +119,10 @@ export async function processImage(
     try {
       const base64Data = Buffer.from(imageInput, "base64");
       await fsPromises.writeFile(localFilePath, base64Data);
-      return localFilePath;
+      log.info(`Image saved to ${localFilePath}`);
+      const filename = path.basename(localFilePath);
+      log.info(`Filename: ${filename}`);
+      return filename;
     } catch (e: any) {
       throw new Error(`Failed to parse base64 encoded image: ${e.message}`);
     }
