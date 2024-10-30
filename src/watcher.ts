@@ -8,13 +8,14 @@ function waitForFileStability(filePath: string): Promise<void> {
     let lastKnownSize = -1;
     let retries = 0;
     let attempts = 0;
-    let maxDelayMs = 50 * 20 * 30; // max Delay is 30 seconds
-    let delayMs = 50;
+    const maxDelayMs = 50 * 20 * 30; // max Delay is 30 seconds
+    const delayMs = 50;
 
     const checkFile = () => {
       fs.stat(filePath, (err, stats) => {
         if (err) {
-          reject(`Error accessing file: ${err}`);
+          console.error(`Error accessing file: ${err}`);
+          reject(err);
           return;
         }
 
@@ -24,14 +25,13 @@ function waitForFileStability(filePath: string): Promise<void> {
             resolve();
           } else {
             retries++;
-            setTimeout(checkFile, delayMs); // Shortened interval due to smaller file size
+            setTimeout(checkFile, delayMs);
           }
         } else {
           lastKnownSize = stats.size;
           retries = 0;
           attempts++;
           
-          // Skip if we've hit this branch too many times
           if (attempts * delayMs >= maxDelayMs) {
             resolve();
             return;
@@ -63,16 +63,21 @@ export class DirectoryWatcher {
     this.watcher.on("add", async (filepath: string, stats?: Stats) => {
       for (const prefix in this.prefixActions) {
         if (path.basename(filepath).startsWith(prefix)) {
-          await waitForFileStability(filepath);
-          const task = this.prefixActions[prefix](filepath).finally(() => {
-            this.activeTasks.delete(task);
-            if (this.prefixActionCounts[prefix] > 0) {
-              this.prefixActionCounts[prefix]--;
-            } else {
-              this.removePrefixAction(prefix);
-            }
-          });
-          this.activeTasks.add(task);
+          try {
+            await waitForFileStability(filepath);
+            const task = this.prefixActions[prefix](filepath).finally(() => {
+              this.activeTasks.delete(task);
+              if (this.prefixActionCounts[prefix] > 0) {
+                this.prefixActionCounts[prefix]--;
+              }
+              if (this.prefixActionCounts[prefix] === 0) {
+                this.removePrefixAction(prefix);
+              }
+            });
+            this.activeTasks.add(task);
+          } catch (error) {
+            console.error(`Error processing file ${filepath}: ${error}`);
+          }
         }
       }
     });

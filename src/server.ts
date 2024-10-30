@@ -28,6 +28,9 @@ import {
   WorkflowResponseSchema,
   WorkflowTree,
   isWorkflow,
+  WorkflowRequest,
+  WorkflowRequestSchema,
+  Workflow,
 } from "./types";
 import workflows from "./workflows";
 import { z } from "zod";
@@ -305,6 +308,8 @@ server.after(() => {
     }
   );
 
+  let allWorkflows: string[] = [];
+
   // Recursively build the route tree from workflows
   const walk = (tree: WorkflowTree, route = "/workflow") => {
     for (const key in tree) {
@@ -376,12 +381,70 @@ server.after(() => {
         );
 
         server.log.info(`Registered workflow ${route}/${key}`);
+
+        // store all of the workflow routes
+        allWorkflows.push(`${route}/${key}`);
       } else {
         walk(node as WorkflowTree, `${route}/${key}`);
       }
     }
   };
   walk(workflows);
+
+
+  const QueueRequestSchema = z.object({
+    workflowRoute: z.enum(allWorkflows as [string, ...string[]]),
+    workflowInput: WorkflowRequestSchema,
+  });
+  
+  type QueueRequest = z.infer<typeof QueueRequestSchema>;
+  app.post<{  
+    Body: QueueRequest;
+  }>(
+    "/queue",
+    {
+      schema: {
+        summary: "Queue Workflow Task",
+        description: "Submit a workflow task to be processed asynchronously",
+        body: QueueRequestSchema,
+        response: {
+          200: WorkflowResponseSchema,
+          202: WorkflowResponseSchema,
+          400: PromptErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { workflowRoute, workflowInput } = request.body;
+
+      // check if the workflowRoute is valid
+      if (!allWorkflows.includes(workflowRoute)) {
+        return reply.code(400).send({
+          error: `Invalid workflow route: ${workflowRoute}`,
+          location: "workflowRoute in the post body",
+        });
+      }
+
+      // if valid workflow route, call the workflow api
+      const workflowResp = await fetch(
+        `http://localhost:${config.wrapperPort}/${workflowRoute}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(workflowInput),
+        }
+      );
+
+      const body = await workflowResp.json();
+      if (!workflowResp.ok) {
+        return reply.code(workflowResp.status).send(body);
+      }
+
+      return reply.code(workflowResp.status).send(body);
+    }
+  );
 });
 
 let warm = false;
