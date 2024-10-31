@@ -77,3 +77,18 @@ export const WorkflowResponseSchema = z.object({
   webhook: z.string().optional(),
   status: z.enum(["ok"]).optional(),
 });
+
+// Now define the schema after allWorkflows is populated
+export const QueueRequestSchema = z.object({
+  workflowRoute: z.string(),
+  workflowInput: z.object({
+    id: z 
+      .string()
+      .optional()
+      .default(() => randomUUID()),
+    input: z.record(z.any()),
+    webhook: z.string().optional(),
+  }), // Changed from WorkflowRequestSchema since inputs vary by workflow
+});
+  
+export type QueueRequest = z.infer<typeof QueueRequestSchema>;

@@ -31,6 +31,8 @@ import {
   WorkflowRequest,
   WorkflowRequestSchema,
   Workflow,
+  QueueRequest,
+  QueueRequestSchema,
 } from "./types";
 import workflows from "./workflows";
 import { z } from "zod";
@@ -57,6 +59,8 @@ const modelResponse: ModelResponse = {};
 for (const modelType in config.models) {
   modelResponse[modelType] = config.models[modelType].all;
 }
+
+const allWorkflows: string[] = [];
 
 server.register(fastifySwagger, {
   openapi: {
@@ -179,6 +183,7 @@ server.after(() => {
     async (request, reply) => {
       let { prompt, id, webhook } = request.body;
       let batchSize = 1;
+      let inputLocalFilePath = "";
 
       for (const nodeId in prompt) {
         const node = prompt[nodeId];
@@ -191,7 +196,11 @@ server.after(() => {
           const imageInput = node.inputs.image;
           try {
             node.inputs.image = await processImage(imageInput, app.log);
+            inputLocalFilePath = path.join(config.inputDir, node.inputs.image);
           } catch (e: any) {
+            if (inputLocalFilePath) {
+              fsPromises.unlink(inputLocalFilePath);
+            }
             return reply.code(400).send({
               error: e.message,
               location: `prompt.${nodeId}.inputs.image`,
@@ -230,8 +239,11 @@ server.after(() => {
               app.log.error(`Failed to send image to webhook: ${e.message}`);
             }
 
-            // Remove the file after sending
+            // Remove the ouput and input files after sending
             fsPromises.unlink(filepath);
+            if (inputLocalFilePath) {
+              fsPromises.unlink(inputLocalFilePath);
+            }
           }
         );
 
@@ -270,8 +282,11 @@ server.after(() => {
                   server.log.info(`dai dai file size: ${base64File.length}`);
                   images.push(base64File);
 
-                  // Remove the file after reading
+                  // Remove the input and output files after reading
                   fsPromises.unlink(filepath);
+                  if (inputLocalFilePath) {
+                    fsPromises.unlink(inputLocalFilePath);
+                  }
 
                   if (images.length === batchSize) {
                     clearTimeout(timeout);
@@ -308,7 +323,6 @@ server.after(() => {
     }
   );
 
-  let allWorkflows: string[] = [];
 
   // Recursively build the route tree from workflows
   const walk = (tree: WorkflowTree, route = "/workflow") => {
@@ -384,6 +398,7 @@ server.after(() => {
 
         // store all of the workflow routes
         allWorkflows.push(`${route}/${key}`);
+        server.log.info(`dai dai after allWorkflows: ${allWorkflows}`);
       } else {
         walk(node as WorkflowTree, `${route}/${key}`);
       }
@@ -391,13 +406,6 @@ server.after(() => {
   };
   walk(workflows);
 
-
-  const QueueRequestSchema = z.object({
-    workflowRoute: z.enum(allWorkflows as [string, ...string[]]),
-    workflowInput: WorkflowRequestSchema,
-  });
-  
-  type QueueRequest = z.infer<typeof QueueRequestSchema>;
   app.post<{  
     Body: QueueRequest;
   }>(
@@ -418,6 +426,8 @@ server.after(() => {
       const { workflowRoute, workflowInput } = request.body;
 
       // check if the workflowRoute is valid
+      server.log.info(`dai dai current allWorkflows: ${allWorkflows}`);
+      server.log.info(`dai dai current workflowRoute: ${workflowRoute}`);
       if (!allWorkflows.includes(workflowRoute)) {
         return reply.code(400).send({
           error: `Invalid workflow route: ${workflowRoute}`,
@@ -427,7 +437,7 @@ server.after(() => {
 
       // if valid workflow route, call the workflow api
       const workflowResp = await fetch(
-        `http://localhost:${config.wrapperPort}/${workflowRoute}`,
+        `http://localhost:${config.wrapperPort}${workflowRoute}`,
         {
           method: "POST",
           headers: {
