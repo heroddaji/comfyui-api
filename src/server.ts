@@ -196,14 +196,15 @@ server.after(() => {
         return reply.code(444).send({
           error: `API version mismatch. Expected ${config.currentApiVersion}, got ${apiVersionNumber}`,
           location: "header.x-api-version",
-      })};
+        })
+      };
 
       for (const nodeId in prompt) {
         const node = prompt[nodeId];
         if (node.class_type === "SaveImage" || node.class_type === "SaveImageExtended") {
           node.inputs.filename_prefix = id;
         }
-         else if (node.inputs.batch_size) {
+        else if (node.inputs.batch_size) {
           batchSize = node.inputs.batch_size;
         } else if (node.class_type === "LoadImage") {
           const imageInput = node.inputs.image;
@@ -375,8 +376,8 @@ server.after(() => {
               description,
               body: BodySchema,
               response: {
-          200: WorkflowResponseSchema,
-          202: WorkflowResponseSchema,
+                200: WorkflowResponseSchema,
+                202: WorkflowResponseSchema,
               },
             },
           },
@@ -384,19 +385,11 @@ server.after(() => {
             const { id, input, webhook } = request.body;
             const prompt = node.generateWorkflow(input);
 
-            const filteredHeaders = Object.fromEntries(
-              Object.entries(request.headers).filter(([_, value]) => value !== undefined)
-            );
-            const newHeaders = new Headers({
-              ...filteredHeaders,
-              "x-api-version": request.headers["x-api-version"] as string,
-            });
-
             const resp = await fetch(
               `http://localhost:${config.wrapperPort}/prompt`,
               {
                 method: "POST",
-                headers: newHeaders,
+                headers: createHeaders(request.headers),
                 body: JSON.stringify({ prompt, id, webhook }),
               }
             );
@@ -425,7 +418,7 @@ server.after(() => {
   };
   walk(workflows);
 
-  app.post<{  
+  app.post<{
     Body: QueueRequest;
   }>(
     "/queue",
@@ -459,9 +452,7 @@ server.after(() => {
         `http://localhost:${config.wrapperPort}${workflowRoute}`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: createHeaders(request.headers),
           body: JSON.stringify(workflowInput),
         }
       );
@@ -486,24 +477,45 @@ process.on("SIGINT", async () => {
 });
 
 export async function start() {
-  try {
-    const start = Date.now();
-    // Start the command
-    launchComfyUI();
-    await waitForComfyUIToStart(server.log);
+  const maxRetries = 3;
+  let attempt = 0;
 
-    await server.ready();
-    server.swagger();
+  while (attempt < maxRetries) {
+    try {
+      const start = Date.now();
+      // Start the command
+      launchComfyUI();
+      await waitForComfyUIToStart(server.log);
 
-    // Start the server
-    await server.listen({ port: config.wrapperPort, host: config.wrapperHost });
-    server.log.info(`ComfyUI API ${version} started.`);
-    await warmupComfyUI();
-    warm = true;
-    const warmupTime = Date.now() - start;
-    server.log.info(`Warmup took ${warmupTime / 1000}s`);
-  } catch (err: any) {
-    server.log.error(`Failed to start server: ${err.message}`);
-    process.exit(1);
+      await server.ready();
+      server.swagger();
+
+      // Start the server
+      await server.listen({ port: config.wrapperPort, host: config.wrapperHost });
+      server.log.info(`ComfyUI API ${version} started.`);
+      await warmupComfyUI();
+      warm = true;
+      const warmupTime = Date.now() - start;
+      server.log.info(`Warmup took ${warmupTime / 1000}s`);
+    } catch (err: any) {
+      server.log.error(`Failed to start server: ${err.message}`);
+      attempt++;
+      if (attempt < maxRetries) {
+        server.log.info(`Retrying to start the server (attempt ${attempt}/${maxRetries})...`);
+      } else {
+        server.log.error(`Max retries reached. Exiting...`);
+        process.exit(1);
+      }
+    }
   }
+}
+
+function createHeaders(requestHeaders: Record<string, any>): Headers {
+  const filteredHeaders = Object.fromEntries(
+    Object.entries(requestHeaders).filter(([_, value]) => value !== undefined)
+  );
+  return new Headers({
+    ...filteredHeaders,
+    "x-api-version": requestHeaders["x-api-version"] as string || "0",
+  });
 }
