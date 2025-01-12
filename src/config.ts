@@ -108,6 +108,7 @@ with open("${temptComfyFilePath}", "w") as f:
 const comfyDescription = getComfyUIDescription();
 
 const config = {
+  currentApiVersion: 1,
   comfyLaunchCmd: CMD,
   wrapperHost: HOST,
   wrapperPort: port,

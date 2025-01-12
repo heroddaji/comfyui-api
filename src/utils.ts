@@ -63,6 +63,7 @@ export async function warmupComfyUI(): Promise<void> {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "x-api-version": config.currentApiVersion.toString(),
       },
       body: JSON.stringify({ prompt: config.warmupPrompt }),
     });

@@ -185,6 +185,19 @@ server.after(() => {
       let batchSize = 1;
       let inputLocalFilePath = "";
 
+      let apiVersion = request.headers["x-api-version"] as string;
+      server.log.info(`dai dai api version: ${apiVersion}`);
+      server.log.info(`dai dai correct api version: ${config.currentApiVersion}`);
+
+      const apiVersionNumber = parseInt(apiVersion, 0);
+
+      if (apiVersionNumber != config.currentApiVersion) {
+        server.log.info(`dai dai wrong api version: ${apiVersionNumber}`);
+        return reply.code(444).send({
+          error: `API version mismatch. Expected ${config.currentApiVersion}, got ${apiVersionNumber}`,
+          location: "header.x-api-version",
+      })};
+
       for (const nodeId in prompt) {
         const node = prompt[nodeId];
         if (node.class_type === "SaveImage" || node.class_type === "SaveImageExtended") {
@@ -362,8 +375,8 @@ server.after(() => {
               description,
               body: BodySchema,
               response: {
-                200: WorkflowResponseSchema,
-                202: WorkflowResponseSchema,
+          200: WorkflowResponseSchema,
+          202: WorkflowResponseSchema,
               },
             },
           },
@@ -371,13 +384,19 @@ server.after(() => {
             const { id, input, webhook } = request.body;
             const prompt = node.generateWorkflow(input);
 
+            const filteredHeaders = Object.fromEntries(
+              Object.entries(request.headers).filter(([_, value]) => value !== undefined)
+            );
+            const newHeaders = new Headers({
+              ...filteredHeaders,
+              "x-api-version": request.headers["x-api-version"] as string,
+            });
+
             const resp = await fetch(
               `http://localhost:${config.wrapperPort}/prompt`,
               {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
+                headers: newHeaders,
                 body: JSON.stringify({ prompt, id, webhook }),
               }
             );
