@@ -399,8 +399,8 @@ server.after(() => {
             }
 
             // we do not need these info, it take lot of space if the input and prompt has image data as base64 in it
-            // body.input = input;
-            // body.prompt = prompt;
+            body.input = {};
+            // body.prompt = {};
 
             return reply.code(resp.status).send(body);
           }
@@ -477,45 +477,31 @@ process.on("SIGINT", async () => {
 });
 
 export async function start() {
-  const maxRetries = 3;
-  let attempt = 0;
+  try {
+    const start = Date.now();
+    // Start the command
+    launchComfyUI();
+    await waitForComfyUIToStart(server.log);
 
-  while (attempt < maxRetries) {
-    try {
-      const start = Date.now();
-      // Start the command
-      launchComfyUI();
-      await waitForComfyUIToStart(server.log);
+    await server.ready();
+    server.swagger();
 
-      await server.ready();
-      server.swagger();
-
-      // Start the server
-      await server.listen({ port: config.wrapperPort, host: config.wrapperHost });
-      server.log.info(`ComfyUI API ${version} started.`);
-      await warmupComfyUI();
-      warm = true;
-      const warmupTime = Date.now() - start;
-      server.log.info(`Warmup took ${warmupTime / 1000}s`);
-    } catch (err: any) {
-      server.log.error(`Failed to start server: ${err.message}`);
-      attempt++;
-      if (attempt < maxRetries) {
-        server.log.info(`Retrying to start the server (attempt ${attempt}/${maxRetries})...`);
-      } else {
-        server.log.error(`Max retries reached. Exiting...`);
-        process.exit(1);
-      }
-    }
+    // Start the server
+    await server.listen({ port: config.wrapperPort, host: config.wrapperHost });
+    server.log.info(`ComfyUI API ${version} started.`);
+    await warmupComfyUI();
+    warm = true;
+    const warmupTime = Date.now() - start;
+    server.log.info(`Warmup took ${warmupTime / 1000}s`);
+  } catch (err: any) {
+    server.log.error(`Failed to start server: ${err.message}`);
+    process.exit(1);
   }
 }
 
-function createHeaders(requestHeaders: Record<string, any>): Headers {
-  const filteredHeaders = Object.fromEntries(
-    Object.entries(requestHeaders).filter(([_, value]) => value !== undefined)
-  );
-  return new Headers({
-    ...filteredHeaders,
-    "x-api-version": requestHeaders["x-api-version"] as string || "0",
-  });
+function createHeaders(oldHeaders: Record<string, any>): c {
+  return {
+    "Content-Type": "application/json",
+    "x-api-version": oldHeaders["x-api-version"] as string || "0",
+  };
 }
