@@ -37,6 +37,7 @@ import {
 import workflows from "./workflows";
 import { z } from "zod";
 import { randomUUID } from "crypto";
+import { create } from "domain";
 
 const outputWatcher = new DirectoryWatcher(config.outputDir);
 
@@ -185,20 +186,6 @@ server.after(() => {
       let batchSize = 1;
       let inputLocalFilePath = "";
 
-      let apiVersion = request.headers["x-api-version"] as string;
-      server.log.info(`dai dai api version: ${apiVersion}`);
-      server.log.info(`dai dai correct api version: ${config.currentApiVersion}`);
-
-      const apiVersionNumber = parseInt(apiVersion, 0);
-
-      if (apiVersionNumber != config.currentApiVersion) {
-        server.log.info(`dai dai wrong api version: ${apiVersionNumber}`);
-        return reply.code(444).send({
-          error: `API version mismatch. Expected ${config.currentApiVersion}, got ${apiVersionNumber}`,
-          location: "header.x-api-version",
-        })
-      };
-
       for (const nodeId in prompt) {
         const node = prompt[nodeId];
         if (node.class_type === "SaveImage" || node.class_type === "SaveImageExtended") {
@@ -234,9 +221,7 @@ server.after(() => {
             try {
               const res = await fetch(webhook, {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
+                headers: createHeaders(request.headers),
                 body: JSON.stringify({
                   image: base64File,
                   id,
@@ -263,9 +248,7 @@ server.after(() => {
 
         const resp = await fetch(`${config.comfyURL}/prompt`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: createHeaders(request.headers),
           body: JSON.stringify({ prompt }),
         });
 
@@ -320,9 +303,7 @@ server.after(() => {
         const finished = waitForImagesToGenerate();
         const resp = await fetch(`${config.comfyURL}/prompt`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: createHeaders(request.headers),
           body: JSON.stringify({ prompt }),
         });
         if (!resp.ok) {
@@ -435,9 +416,26 @@ server.after(() => {
       },
     },
     async (request, reply) => {
-      const { workflowRoute, workflowInput } = request.body;
+      const { workflowRoute, workflowInput, api_version } = request.body;
+
+      // Validate api_version
+      if (isNaN(Number(api_version))) {
+        return reply.code(444).send({
+          error: `Invalid API version: ${api_version}. Must be a number.`,
+          location: "body.api_version",
+        });
+      }
 
       // check if the workflowRoute is valid
+      server.log.info(`dai dai request api_version: ${api_version}`);
+      if (api_version != config.currentApiVersion) {
+        server.log.info(`dai dai wrong api version: ${api_version}`);
+        return reply.code(444).send({
+          error: `API version mismatch. Expected ${config.currentApiVersion}, got ${api_version}`,
+          location: "body.api_version",
+        });
+      }
+
       server.log.info(`dai dai current allWorkflows: ${allWorkflows}`);
       server.log.info(`dai dai current workflowRoute: ${workflowRoute}`);
       if (!allWorkflows.includes(workflowRoute)) {
@@ -499,9 +497,8 @@ export async function start() {
   }
 }
 
-function createHeaders(oldHeaders: Record<string, any>): c {
+function createHeaders(oldHeaders: Record<string, any>): Record<string, string> {
   return {
     "Content-Type": "application/json",
-    "x-api-version": oldHeaders["x-api-version"] as string || "0",
   };
 }

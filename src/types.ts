@@ -89,6 +89,7 @@ export const QueueRequestSchema = z.object({
     input: z.record(z.any()),
     webhook: z.string().optional(),
   }), // Changed from WorkflowRequestSchema since inputs vary by workflow
+  api_version: z.any(),
 });
   
 export type QueueRequest = z.infer<typeof QueueRequestSchema>;
